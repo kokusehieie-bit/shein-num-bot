@@ -1,0 +1,12 @@
+198.105.121.200:6462:qyigklud:2uxe0pmk78tq
+64.137.96.74:6641:rgtorikw:56uylgqpqna3
+198.105.121.200:6462:rgtorikw:56uylgqpqna3
+45.38.107.97:6014:qyigklud:2uxe0pmk78tq
+64.137.96.74:6641:orbtuqdk:6rlrw5n9j6be
+198.105.121.200:6462:orbtuqdk:6rlrw5n9j6be
+45.38.107.97:6014:rgtorikw:56uylgqpqna3
+45.38.107.97:6014:dsdzftld:b7xh5o24fcjs
+45.38.107.97:6014:orbtuqdk:6rlrw5n9j6be
+198.23.239.134:6540:orbtuqdk:6rlrw5n9j6be
+191.96.254.138:6185:qyigklud:2uxe0pmk78tq
+198.23.239.134:6540:qyigklud:2uxe0pmk78tq

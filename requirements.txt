@@ -1,0 +1,4 @@
+requests
+colorama
+python-telegram-bot
+urllib3

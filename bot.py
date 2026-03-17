@@ -5,7 +5,8 @@ KOKU VPS HUNTER – Anti‑Detection SHEIN Number Checker
 - Telegram bot with your credentials.
 - PID file lock + global error handler for Conflict.
 - Startup notification sent to Telegram.
-- Commands: /monitor, /hits, /clear, /help, plus hourly stats.
+- Commands: /monitor, /hits, /clear, /help.
+- Hourly stats via background thread (no JobQueue dependency).
 - Full fingerprint randomization, multi‑threading, proxy support.
 """
 
@@ -267,6 +268,14 @@ def worker(thread_id):
             print(f"{Fore.RED}[Thread {thread_id}] Error: {e}{Style.RESET_ALL}")
             time.sleep(2)
 
+# ==================== HOURLY STATS THREAD ====================
+def hourly_stats_loop():
+    """Send stats every hour via Telegram."""
+    while True:
+        time.sleep(3600)  # 1 hour
+        if ENABLE_BOT:
+            send_telegram(format_stats_message(), parse_mode='Markdown')
+
 # ==================== TELEGRAM BOT ====================
 if ENABLE_BOT:
     from telegram import Update
@@ -305,9 +314,6 @@ The bot scans numbers 24/7 with anti‑detection measures.
         """
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
-    async def scheduled_stats(context: ContextTypes.DEFAULT_TYPE):
-        send_telegram(format_stats_message(), parse_mode='Markdown')
-
     def start_bot():
         app = Application.builder().token(BOT_TOKEN).build()
         app.add_error_handler(error_handler)
@@ -315,8 +321,6 @@ The bot scans numbers 24/7 with anti‑detection measures.
         app.add_handler(CommandHandler("hits", hits_command))
         app.add_handler(CommandHandler("clear", clear_command))
         app.add_handler(CommandHandler("help", help_command))
-        if app.job_queue:
-            app.job_queue.run_repeating(scheduled_stats, interval=3600, first=3600)
         print(f"{Fore.GREEN}[BOT] Telegram bot running in main thread...{Style.RESET_ALL}")
         try:
             app.run_polling()
@@ -345,12 +349,17 @@ def main():
     signal.signal(signal.SIGINT, lambda signum, frame: sys.exit(0))
 
     print(f"{Fore.GREEN}╔════════════════════════════════════╗{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}║     KOKU VPS HUNTER v1.4          ║{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}║     KOKU VPS HUNTER v1.5          ║{Style.RESET_ALL}")
     print(f"{Fore.GREEN}╚════════════════════════════════════╝{Style.RESET_ALL}")
     print(f"Threads: {THREADS}")
     print(f"Base delay: {DELAY_BASE}s")
     print(f"Proxies: {'Yes (' + str(len(_proxies)) + ')' if _proxies else 'No'}")
     print(f"Telegram bot: {'Enabled' if ENABLE_BOT else 'Disabled'}")
+
+    # Start hourly stats thread (if bot enabled)
+    if ENABLE_BOT:
+        stats_thread = threading.Thread(target=hourly_stats_loop, daemon=True)
+        stats_thread.start()
 
     # Send startup notification
     if ENABLE_BOT:

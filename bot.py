@@ -5,6 +5,7 @@ KOKU VPS HUNTER – Anti‑Detection SHEIN Number Checker
 - Telegram bot included with your credentials.
 - Full fingerprint randomization, random delays, token rotation.
 - Multi‑threaded (configurable).
+- Sends startup notification to Telegram.
 - Commands: /monitor, /hits, /clear, /help, plus hourly stats.
 - All settings via environment variables (optional).
 """
@@ -285,7 +286,13 @@ The bot scans numbers 24/7 with anti‑detection measures.
         if app.job_queue:
             app.job_queue.run_repeating(scheduled_stats, interval=3600, first=3600)
         print(f"{Fore.GREEN}[BOT] Telegram bot running in main thread...{Style.RESET_ALL}")
-        app.run_polling()
+        try:
+            app.run_polling()
+        except Exception as e:
+            print(f"{Fore.RED}[BOT] Polling error: {e}{Style.RESET_ALL}")
+            time.sleep(5)
+            # Restart bot on failure
+            start_bot()
 else:
     def start_bot():
         print(f"{Fore.YELLOW}[BOT] Telegram bot disabled.{Style.RESET_ALL}")
@@ -295,18 +302,24 @@ else:
 # ==================== MAIN ====================
 def main():
     print(f"{Fore.GREEN}╔════════════════════════════════════╗{Style.RESET_ALL}")
-    print(f"{Fore.GREEN}║     KOKU VPS HUNTER v1.1          ║{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}║     KOKU VPS HUNTER v1.2          ║{Style.RESET_ALL}")
     print(f"{Fore.GREEN}╚════════════════════════════════════╝{Style.RESET_ALL}")
     print(f"Threads: {THREADS}")
     print(f"Base delay: {DELAY_BASE}s")
     print(f"Proxies: {'Yes (' + str(len(_proxies)) + ')' if _proxies else 'No'}")
     print(f"Telegram bot: {'Enabled' if ENABLE_BOT else 'Disabled'}")
 
+    # Send startup notification
+    if ENABLE_BOT:
+        send_telegram("✅ *KOKU VPS HUNTER started.*\nMonitoring enabled.", parse_mode='Markdown')
+
+    # Start worker threads
     for i in range(THREADS):
         t = threading.Thread(target=worker, args=(i+1,), daemon=True)
         t.start()
         time.sleep(0.5)
 
+    # Start Telegram bot (blocks main thread)
     start_bot()
 
 if __name__ == "__main__":
